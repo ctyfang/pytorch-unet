@@ -8,12 +8,12 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import os
 
 
-def validate(net, n_validate, loss_fn, dataloader, device='cpu'):
+def validate(net, n_validate, loss_fn, output_fn, dataloader, device='cpu'):
     """Return average metrics over the validation set"""
     net.eval()
-    sigmoid = nn.Sigmoid()
 
     with tqdm(total=n_validate, desc=f'Validation', unit='img') as pbar:
 
@@ -30,9 +30,9 @@ def validate(net, n_validate, loss_fn, dataloader, device='cpu'):
 
             # Compute number correct
             if net.n_classes == 1:
-                preds_cls = torch.round(sigmoid(preds))
+                preds_cls = torch.round(output_fn(preds))
             else:
-                preds_cls = torch.argmax(preds, dim=1)
+                preds_cls = torch.argmax(output_fn(preds), dim=1)
 
             # Accumulate metrics
             total_loss += loss.item()
@@ -63,8 +63,10 @@ def train(net, data_dir, validation_ratio,
                               weight_decay=1e-8, momentum=0.9)
     if net.n_classes > 1:
         loss_fn = nn.CrossEntropyLoss()
+        output_fn = nn.Softmax2d()
     else:
         loss_fn = nn.BCEWithLogitsLoss()
+        output_fn = nn.Sigmoid()
 
     # Training Loop
     writer = SummaryWriter()
@@ -91,9 +93,15 @@ def train(net, data_dir, validation_ratio,
                 optimizer.step()
 
                 if i_batch == 0:
+                    # output to predictions
+                    if net.n_classes == 1:
+                        preds_cls = torch.round(output_fn(preds))
+                    else:
+                        preds_cls = torch.argmax(output_fn(preds), dim=1)
+
                     # create grid of images
                     img_grid = torchvision.utils.make_grid(imgs)
-                    pred_grid = torchvision.utils.make_grid(preds)
+                    pred_grid = torchvision.utils.make_grid(preds_cls)
                     label_grid = torchvision.utils.make_grid(labels)
 
                     # write to tensorboard
@@ -103,12 +111,22 @@ def train(net, data_dir, validation_ratio,
 
                 pbar.update(imgs.shape[0])
 
-        loss_val, acc_val = validate(net, n_val, loss_fn,
+        # Validate
+        loss_val, acc_val = validate(net, n_val, loss_fn, output_fn,
                                      val_dataloader, device=device)
+
+        # Tensorboard Logging
         writer.add_scalar('acc/val', acc_val, i_epoch)
         writer.add_scalar('loss/val', loss_val, i_epoch)
         writer.add_scalar('loss/train', epoch_loss, i_epoch)
         writer.flush()
+
+        # Checkpoint
+        torch.save({
+            'epoch': i_epoch,
+            'model_state_dict': net.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }, os.path.join(writer.log_dir, 'checkpoint.pt'))
 
 
 if __name__ == '__main__':
