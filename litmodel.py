@@ -5,6 +5,7 @@ import torchmetrics
 from metrics import *
 from model import *
 
+# TODO: hparams
 
 class LitUNet(pl.LightningModule):
     def __init__(self, n_classes=1, n_prefeats=64, learning_rate=1e-4):
@@ -94,30 +95,67 @@ class LitUNet(pl.LightningModule):
             self.logger.experiment.add_image('label', label_grid, self.current_epoch)
         return loss
 
+    def test_step(self, batch, batch_idx):
+        x = batch['image']
+        y_hat = self(x)
+        output = self.output_fn(y_hat)
+
+        # Generate predictions
+        if self.n_classes == 1:
+            output = torch.round(output)
+        else:
+            output = torch.argmax(output, dim=1)
+        return {'image': x, 'prediction': output}
+
+    def test_epoch_end(self, test_outputs):
+        x_arr, output_arr = [], []
+        for out in test_outputs:
+            x, output = out['image'], out['prediction']
+            output = output.type(torch.int)
+            x_arr.append(x)
+            output_arr.append(output)
+
+        x = torch.cat(x_arr, dim=0)
+        output = torch.cat(output_arr, dim=0)
+        img_grid = torchvision.utils.make_grid(x)
+        pred_grid = torchvision.utils.make_grid(output)
+
+        self.logger.experiment.add_image('test_input', img_grid, 0)
+        self.logger.experiment.add_image('test_predictions', pred_grid, 0)
+        self.logger.experiment.flush()
+
     def configure_optimizers(self):
         return torch.optim.RMSprop(self.parameters(), lr=self.learning_rate,
                                    weight_decay=1e-8, momentum=0.9)
 
-from dataset import UNetDataset
+from dataset import UNetDataset, Images
 from torchvision.transforms import ToTensor
 from torch.utils.data import DataLoader
 
 if __name__ == '__main__':
-    validation_ratio = 0.1
-    batch_size = 1
-    data_dir = 'data/membrane/train'
+    # # Training
+    # validation_ratio = 0.1
+    # batch_size = 1
+    # data_dir = 'data/membrane/train'
+    #
+    # dataset = UNetDataset(data_dir,
+    #                       transform=ToTensor(), target_transform=ToTensor())
+    # n_train, n_val = int(dataset.size * (1 - validation_ratio)), int(
+    #     dataset.size * validation_ratio)
+    # train_dataset, val_dataset = torch.utils.data.random_split(dataset,
+    #                                                            [n_train, n_val])
+    # train_dataloader = DataLoader(train_dataset, batch_size=batch_size,
+    #                               shuffle=True, num_workers=8)
+    # val_dataloader = DataLoader(val_dataset, batch_size=batch_size,
+    #                             shuffle=False, num_workers=8)
+    #
+    # unet = LitUNet()
+    # trainer = pl.Trainer(gpus=1)
+    # trainer.fit(unet, train_dataloader, val_dataloader)
 
-    dataset = UNetDataset(data_dir,
-                          transform=ToTensor(), target_transform=ToTensor())
-    n_train, n_val = int(dataset.size * (1 - validation_ratio)), int(
-        dataset.size * validation_ratio)
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset,
-                                                               [n_train, n_val])
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size,
-                                  shuffle=True, num_workers=8)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size,
-                                shuffle=False, num_workers=8)
-
-    unet = LitUNet()
+    # Testing
+    unet = LitUNet.load_from_checkpoint('lightning_logs/version_8/checkpoints/epoch=22-step=620.ckpt')
     trainer = pl.Trainer(gpus=1)
-    trainer.fit(unet, train_dataloader, val_dataloader)
+    test_dataset = Images(root_dir='data/membrane/test/', transform=ToTensor())
+    test_dataloader = DataLoader(test_dataset, batch_size=1, num_workers=8, shuffle=False)
+    trainer.test(unet, test_dataloaders=test_dataloader)
