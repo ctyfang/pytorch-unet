@@ -81,9 +81,8 @@ class LitUNet(pl.LightningModule):
         else:
             output = torch.argmax(output, dim=1)
 
-        self.log('val_loss', loss.item())
-        self.log('val_acc', self.val_f1(output, y),
-                 on_step=True, on_epoch=False)
+        self.log('val_loss', loss.item(), on_step=False, on_epoch=True)
+        self.log('val_acc', self.val_f1(output, y), on_step=False, on_epoch=True)
 
         if batch_idx == 0:
             img_grid = torchvision.utils.make_grid(x)
@@ -105,7 +104,7 @@ from torch.utils.data import DataLoader
 
 if __name__ == '__main__':
     validation_ratio = 0.1
-    batch_size = 30
+    batch_size = 1
     data_dir = 'data/membrane/train'
 
     dataset = UNetDataset(data_dir,
@@ -120,5 +119,5 @@ if __name__ == '__main__':
                                 shuffle=False, num_workers=8)
 
     unet = LitUNet()
-    trainer = pl.Trainer()
+    trainer = pl.Trainer(gpus=1)
     trainer.fit(unet, train_dataloader, val_dataloader)
