@@ -1,0 +1,10 @@
+name: membrane
+
+_target_: project.dataset.LitUNetDataModule
+data_dir: /home/carter.fang/git/pytorch-unet/data/membrane/train  # Use absolute path
+val_ratio: 0.1
+batch_size: 1
+num_workers: 8
+
+input_channels: 1
+n_classes: 1

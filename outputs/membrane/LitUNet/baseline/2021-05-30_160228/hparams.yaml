@@ -1,0 +1,8 @@
+input_channels: 1
+n_classes: 1
+n_prefeats: 64
+optimizer:
+  _target_: torch.optim.SGD
+  lr: 0.001
+  momentum: 0.99
+name: LitUNet

@@ -1,0 +1,8 @@
+name: LitUNet
+
+_target_: project.litmodel.LitUNet
+input_channels: 1
+n_prefeats: 64
+n_classes: 1
+defaults:
+  - /optim/sgd.yaml@optimizer
